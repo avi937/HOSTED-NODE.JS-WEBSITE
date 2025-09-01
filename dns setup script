@@ -1,0 +1,79 @@
+#!/bin/bash
+
+#variables
+DOMAIN="suiiii.space"
+ZONE_FILE="suiiii"
+IP="3.110.147.146"
+NAMED_CONF="/etc/named.conf"
+NAMED_BACKUP="/root/namedbacup.conf"
+ZONE_PATH="/var/named"
+
+#FUNCTIONS TO INSTALL REQUIRED PACKAGES:
+echo "INSTALLING BIND AND BIND-UTILS..."
+yum update -y
+yum upgrade -y
+yum install bind bind-utils -y
+
+
+#BACKING UP THE MAIN CONFIGURATION FILE:
+echo "BACKING UP $NAMED_CONF TO $NAMED_BACKUP...."
+cp -p $NAMED_CONF $NAMED_BACKUP
+
+#START AND ENABLE DNS SERVICE:
+systemctl enable --now named.service
+
+#CLEARING AND EDITING YOU named.conf file:
+echo "CONFIGURING $NAMED_CONF......"
+cat > $NAMED_CONF <<EOL
+options {
+        directory "$ZONE_PATH";
+        recursion no;
+};
+
+zone "$DOMAIN" IN {
+        type master;
+        file "$ZONE_FILE";
+};
+EOL
+
+echo "named.conf CONFIGURED SUCCESSFULLY"
+
+#now creating and configuring zone file
+echo "creating and configuring zone file $ZONE_PATH/$ZONE_FILE"
+
+cat > $ZONE_PATH/$ZONE_FILE <<EOL
+@       IN      SOA     ns1.$DOMAIN.    ns2.$DOMAIN.    (
+                        2023121201      ; Serial
+                        3600            ; Refresh
+                        1800            ; Retry
+                        604800          ; Expire
+                        86400   )       ; Minimum TTL
+
+@       IN      NS      ns1.$DOMAIN.
+@       IN      NS      ns2.$DOMAIN.
+ns1     IN      A       $IP
+ns2     IN      A       $IP
+@       IN      A       $IP
+www     IN      CNAME   $DOMAIN.
+
+EOL
+
+echo "ZONE FILE CONFIGURED SUCCESSFULLY $ZONE_PATH/$ZONE_FILE"
+
+# Set permissions for the database file
+chown named:named $ZONE_PATH/$ZONE_FILE
+chmod 640 $ZONE_PATH/$ZONE_FILE
+
+# Restart the DNS Service
+echo "Restarting the DNS service "named.service"."
+systemctl restart named.service
+
+# Check the service status
+if systemctl is-active named.service; then
+        echo "DNS service restarted successfully."
+else
+        echo "Failed to restart DNS service. Check the configuration."
+        exit 1
+fi
+
+echo "DNS server configuration completed successfully."
